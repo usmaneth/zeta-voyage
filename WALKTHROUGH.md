@@ -38,6 +38,87 @@ This is where the mockup components came in. Each was adapted rather than ported
 
 ---
 
+## File Structure — What We Added vs. Modified
+
+A key principle: **don't scatter changes everywhere**. We kept a clean separation between the starter app's existing infrastructure and our new travel-specific code.
+
+### Files We Created (New)
+
+All new travel-specific code lives in two places:
+
+**`app/components/luxury/`** — A dedicated directory for all luxury UI components. This was an intentional choice: rather than dropping new components alongside the starter app's existing ones (`chatbot.tsx`, `app-sidebar.tsx`, etc.), we namespaced everything under `luxury/`. This means:
+- You can instantly see what's ours vs. what shipped with the starter
+- Deleting the `luxury/` folder would cleanly remove all travel UI without touching core chat functionality
+- No risk of naming collisions with existing components
+
+```
+app/components/luxury/
+  tilt-card.tsx              — 3D tilt wrapper with gold glare (landing page)
+  destination-modal.tsx      — Full-screen explore modal with itinerary/pricing
+  flip-card.tsx              — 3D flip cards with insider tips
+  spotlight-section.tsx      — Cursor-tracking hidden luxuries reveal
+  mood-selector.tsx          — 6 travel mood buttons for chat onboarding
+  quick-action-chips.tsx     — Context-aware follow-up suggestions
+  inline-destination-card.tsx — Rich card rendered inside chat messages
+  destination-card.tsx       — Standalone destination card component
+  weather-widget.tsx         — Weather display (compact + full variants)
+  upcoming-trips.tsx         — Trip list with status badges
+```
+
+**`lib/`** — Domain logic and data, separate from UI:
+
+```
+lib/
+  system-prompt.ts           — Voyage concierge persona prompt
+  travel-data.ts             — Destination, Trip, WeatherData types + mock data
+  weather-api.ts             — Open-Meteo integration with 15-min cache
+  detect-destinations.ts     — Keyword + alias detection engine
+```
+
+**`app/landing/page.tsx`** — The entire landing page is new. We created a new route rather than modifying the existing app entry point.
+
+**`public/images/`** — 10 destination and hero images for the visual layer.
+
+### Files We Modified (Existing)
+
+These are starter app files we touched. The goal was **minimal, surgical edits** — change what's needed for the travel experience without rewriting the app's plumbing:
+
+| File | What Changed | Why |
+|------|-------------|-----|
+| `app/globals.css` | Full rewrite | Replaced default theme with navy+gold HSL palette. This is the design system foundation — everything else references these variables. |
+| `app/layout.tsx` | Font + metadata | Added Playfair Display import, updated page title/description to Voyage branding. ~5 lines changed. |
+| `app/login/page.tsx` | Visual reskin | Background image, gold accents, luxury copy. Same auth flow, different paint. |
+| `app/components/chatbot.tsx` | Heaviest modification | Added split-screen layout, mood selector, inline cards, quick action chips, tool output stripping, card deduplication logic. This is where the chat *experience* lives. |
+| `app/components/chat-provider.tsx` | System prompt wiring | Imported `VOYAGE_SYSTEM_PROMPT` and passed it as `systemPrompt` prop to `useAppChat()`. ~3 lines changed. |
+| `app/components/app-sidebar.tsx` | Branding | Swapped header text to "Voyage" with gold styling. ~2 lines changed. |
+| `app/components/app-layout.tsx` | Loading spinner | Changed default spinner to gold. ~1 line changed. |
+| `app/(app)/layout.tsx` | Loading spinner | Same gold spinner change. ~1 line changed. |
+| `lib/constants.ts` | Placeholder text | Travel-themed input placeholders instead of generic ones. |
+
+### What We Didn't Touch
+
+Just as important — what we left alone:
+
+- **`hooks/`** — All SDK hooks (`useAppChat`, `useAppModels`, `useAppFiles`, etc.) untouched. The AI infrastructure works; we built on top of it.
+- **`components/ui/`** — The entire shadcn component library. We use these components as-is and added our own alongside them.
+- **`components/chat/`** — The core chat message rendering pipeline. We compose around it, not inside it.
+- **`app/api/`**, **`lib/database.ts`**, **`lib/seed-data.ts`** — Backend/data infrastructure. No reason to touch.
+- **`e2e/`**, **`eslint.config.mjs`**, **`tsconfig.json`** — Tooling config. Left as-is.
+
+### Why This Structure Matters
+
+This organization answers a question every reviewer will have: *"How much of this is yours vs. the starter?"*
+
+The answer is clear at a glance:
+- **`luxury/`** directory = all new UI components
+- **`lib/system-prompt.ts`**, **`lib/travel-data.ts`**, **`lib/weather-api.ts`**, **`lib/detect-destinations.ts`** = all new domain logic
+- **`app/landing/page.tsx`** = new page
+- Everything else = targeted modifications to existing files, mostly skinning and wiring
+
+A reviewer can `diff` any modified file against the starter to see exactly what changed. The new files stand entirely on their own.
+
+---
+
 ## Key Features — What We Built and Why
 
 ### Landing Page
