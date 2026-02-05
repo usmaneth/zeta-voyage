@@ -1,0 +1,458 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter", var(--font-geist-sans), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-serif: "Playfair Display", var(--font-playfair), Georgia, serif;
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-gold-dark: var(--gold-dark);
+  --color-champagne: var(--champagne);
+  --color-navy: var(--navy);
+  --color-navy-light: var(--navy-light);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ====================================
+   LUXURY LIGHT MODE - Warm cream & gold
+   ==================================== */
+:root {
+  --icon-invert: 0;
+  --radius: 0.5rem;
+  --background: hsl(40 30% 97%);
+  --foreground: hsl(220 20% 15%);
+  --card: hsl(40 25% 95%);
+  --card-foreground: hsl(220 20% 15%);
+  --popover: hsl(40 25% 95%);
+  --popover-foreground: hsl(220 20% 15%);
+  --primary: hsl(43 90% 50%);
+  --primary-foreground: hsl(220 25% 10%);
+  --secondary: hsl(40 20% 90%);
+  --secondary-foreground: hsl(220 20% 20%);
+  --muted: hsl(40 15% 92%);
+  --muted-foreground: hsl(220 10% 45%);
+  --accent: hsl(43 40% 88%);
+  --accent-foreground: hsl(220 20% 15%);
+  --destructive: hsl(0 84% 35%);
+  --border: hsl(40 20% 88%);
+  --input: hsl(40 15% 75%);
+  --ring: hsl(43 90% 50%);
+  --chart-1: hsl(43 90% 50%);
+  --chart-2: hsl(195 70% 45%);
+  --chart-3: hsl(160 60% 40%);
+  --chart-4: hsl(15 80% 50%);
+  --chart-5: hsl(280 60% 50%);
+  /* Sidebar is always dark navy for luxury feel */
+  --sidebar: hsl(220 25% 12%);
+  --sidebar-foreground: hsl(40 30% 95%);
+  --sidebar-primary: hsl(43 90% 55%);
+  --sidebar-primary-foreground: hsl(220 25% 10%);
+  --sidebar-accent: hsl(220 20% 18%);
+  --sidebar-accent-foreground: hsl(40 30% 95%);
+  --sidebar-border: hsl(220 20% 18%);
+  --sidebar-ring: hsl(43 90% 55%);
+  /* Luxury tokens */
+  --gold: hsl(43 90% 50%);
+  --gold-light: hsl(43 80% 70%);
+  --gold-dark: hsl(43 85% 35%);
+  --champagne: hsl(40 30% 92%);
+  --navy: hsl(220 25% 12%);
+  --navy-light: hsl(220 20% 25%);
+  --pattern-stroke: hsl(40 20% 88%);
+}
+
+/* ====================================
+   LUXURY DARK MODE - Deep navy & gold
+   ==================================== */
+.dark {
+  --icon-invert: 1;
+  --background: hsl(220 25% 8%);
+  --foreground: hsl(40 30% 95%);
+  --card: hsl(220 22% 11%);
+  --card-foreground: hsl(40 30% 95%);
+  --popover: hsl(220 22% 12%);
+  --popover-foreground: hsl(40 30% 95%);
+  --primary: hsl(43 90% 55%);
+  --primary-foreground: hsl(220 25% 10%);
+  --secondary: hsl(220 18% 18%);
+  --secondary-foreground: hsl(40 30% 92%);
+  --muted: hsl(220 15% 16%);
+  --muted-foreground: hsl(40 15% 55%);
+  --accent: hsl(43 30% 20%);
+  --accent-foreground: hsl(43 80% 70%);
+  --destructive: hsl(0 84% 45%);
+  --border: hsl(220 20% 15%);
+  --input: hsl(220 15% 25%);
+  --ring: hsl(43 90% 55%);
+  --chart-1: hsl(43 90% 60%);
+  --chart-2: hsl(195 70% 55%);
+  --chart-3: hsl(160 60% 50%);
+  --chart-4: hsl(15 80% 55%);
+  --chart-5: hsl(280 60% 60%);
+  --sidebar: hsl(220 28% 6%);
+  --sidebar-foreground: hsl(40 30% 95%);
+  --sidebar-primary: hsl(43 90% 55%);
+  --sidebar-primary-foreground: hsl(220 25% 10%);
+  --sidebar-accent: hsl(220 22% 14%);
+  --sidebar-accent-foreground: hsl(40 30% 95%);
+  --sidebar-border: hsl(220 20% 12%);
+  --sidebar-ring: hsl(43 90% 55%);
+  /* Luxury tokens */
+  --gold: hsl(43 90% 55%);
+  --gold-light: hsl(43 80% 70%);
+  --gold-dark: hsl(43 85% 40%);
+  --champagne: hsl(40 20% 25%);
+  --navy: hsl(220 25% 8%);
+  --navy-light: hsl(220 20% 20%);
+  --pattern-stroke: hsl(220 20% 15%);
+}
+
+/* ====================================
+   BASE STYLES
+   ==================================== */
+@layer base {
+  * {
+    @apply outline-ring/50;
+    border-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Ultra-thin luxury scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground, hsl(220 10% 45%));
+  opacity: 0.2;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 0.3;
+}
+
+/* Gold selection highlight */
+::selection {
+  background: var(--gold, hsl(43 90% 50%));
+  color: hsl(220 25% 10%);
+}
+
+/* Focus ring with gold styling */
+:focus-visible {
+  outline: 2px solid var(--gold, hsl(43 90% 50%));
+  outline-offset: 2px;
+}
+
+/* ====================================
+   EXISTING APP ANIMATIONS (kept)
+   ==================================== */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scale-pulse {
+  0%, 100% { transform: scale(0.75); }
+  50% { transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInDelayed {
+  0% { opacity: 0; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* ====================================
+   LUXURY ANIMATIONS & EFFECTS
+   ==================================== */
+
+/* Fade up entrance */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.6s ease-out forwards;
+}
+
+/* Fade in */
+@keyframes fadeInSmooth {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeInSmooth 0.4s ease-out forwards;
+}
+
+/* Subtle float */
+@keyframes subtleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.animate-float {
+  animation: subtleFloat 4s ease-in-out infinite;
+}
+
+/* Gold pulse glow for CTAs */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--gold, hsl(43 90% 50%)); }
+  50% { box-shadow: 0 0 20px 4px color-mix(in srgb, var(--gold, hsl(43 90% 50%)) 20%, transparent); }
+}
+.pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+/* Gold shimmer text/background effect */
+@keyframes goldShimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.gold-shimmer {
+  background: linear-gradient(90deg, var(--gold) 0%, var(--gold-light) 50%, var(--gold) 100%);
+  background-size: 200% 100%;
+  animation: goldShimmer 3s linear infinite;
+}
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ====================================
+   LUXURY UTILITY CLASSES
+   ==================================== */
+
+/* Glassmorphism */
+.glass {
+  background: color-mix(in srgb, var(--background) 80%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-dark {
+  background: color-mix(in srgb, var(--navy, hsl(220 25% 12%)) 80%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Luxury underline on hover */
+.luxury-underline {
+  position: relative;
+}
+.luxury-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+  transition: width 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.luxury-underline:hover::after {
+  width: 100%;
+}
+
+/* Magnetic hover (subtle lift) */
+.magnetic-hover {
+  transition: transform 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.magnetic-hover:hover {
+  transform: translateY(-2px);
+}
+.magnetic-hover:active {
+  transform: translateY(0);
+}
+
+/* Parallax image container */
+.parallax-container {
+  overflow: hidden;
+}
+.parallax-container img {
+  transition: transform 0.6s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.parallax-container:hover img {
+  transform: scale(1.05);
+}
+
+/* ====================================
+   SHIKI CODE BLOCK STYLING (kept intact)
+   ==================================== */
+.shiki {
+  color: var(--shiki-light);
+  background-color: transparent !important;
+}
+.shiki span {
+  color: var(--shiki-light);
+  background-color: transparent !important;
+}
+.dark .shiki {
+  color: var(--shiki-dark);
+  background-color: transparent !important;
+}
+.dark .shiki span {
+  color: var(--shiki-dark);
+  background-color: transparent !important;
+}
+
+/* Streamdown code blocks */
+[data-streamdown="code-block"] {
+  width: 100% !important;
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+  overflow: hidden !important;
+  border: none !important;
+  border-radius: 0.75rem !important;
+  background-color: var(--sidebar) !important;
+  content-visibility: visible !important;
+}
+
+[data-streamdown="code-block-header"] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.875rem !important;
+  color: var(--muted-foreground) !important;
+  background-color: var(--sidebar) !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+[data-streamdown="code-block-header"]::before,
+[data-streamdown="code-block-header"]::after {
+  display: none !important;
+}
+
+[data-streamdown="code-block-header"] > span:first-child {
+  margin-left: 0 !important;
+  font-family: inherit !important;
+  text-transform: none !important;
+}
+
+pre[data-streamdown="code-block-body"],
+div[data-streamdown="code-block-body"] {
+  overflow-x: auto !important;
+  padding: 0 1rem 1rem 1rem !important;
+  margin: 0 !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+  color: inherit !important;
+  background-color: var(--sidebar) !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+pre[data-streamdown="code-block-body"]::before,
+pre[data-streamdown="code-block-body"]::after,
+div[data-streamdown="code-block-body"]::before,
+div[data-streamdown="code-block-body"]::after {
+  display: none !important;
+}
+
+.dark pre[data-streamdown="code-block-body"] {
+  background-color: var(--sidebar) !important;
+}
+
+[data-streamdown="code-block-body"] pre,
+[data-streamdown="code-block-body"] pre.shiki {
+  margin: 0 !important;
+  padding: 0 !important;
+  background-color: transparent !important;
+  line-height: inherit !important;
+  white-space: pre !important;
+}
+
+[data-streamdown="code-block-body"] code {
+  display: flex !important;
+  flex-direction: column !important;
+  line-height: 1.5 !important;
+  background-color: transparent !important;
+}
+
+[data-streamdown="code-block-body"] code > span,
+[data-streamdown="code-block-body"] code > span.line {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.5 !important;
+}
+
+[data-streamdown="code-block-body"] code > span::before {
+  display: none !important;
+}
+
+[data-streamdown="code-block-body"] code span {
+  background-color: transparent !important;
+}
+
+.dark [data-streamdown="code-block-body"] code span {
+  color: var(--shiki-dark) !important;
+  background-color: transparent !important;
+}

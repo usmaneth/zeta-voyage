@@ -1,0 +1,980 @@
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "motion/react";
+import { MenuSquareIcon } from "hugeicons-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Zip02Icon } from "@hugeicons/core-free-icons";
+import { ImageIcon, CheckIcon, CpuIcon, FileTextIcon, FileSpreadsheetIcon, FileIcon, AlertCircleIcon, BrainIcon, Sun, Cloud, Wind } from "lucide-react";
+import { usePrivy } from "@privy-io/react-auth";
+
+import { CHAT_INPUT_PLACEHOLDER_UNAUTHENTICATED } from "@/lib/constants";
+import { MODELS, getModelConfig } from "@/lib/models";
+import { detectDestinations } from "@/lib/detect-destinations";
+import { fetchLiveWeather, type LiveWeather } from "@/lib/weather-api";
+import { InlineDestinationCard } from "./luxury/inline-destination-card";
+import { MoodSelector } from "./luxury/mood-selector";
+import { QuickActionChips } from "./luxury/quick-action-chips";
+import { useFiles } from "@reverbia/sdk/react";
+import { useDatabase } from "@/app/providers";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+  StreamingMessage,
+} from "@/components/chat/message";
+import {
+  PromptInput,
+  PromptInputAttachment,
+  PromptInputAttachments,
+  type PromptInputMessage,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputButton,
+  usePromptInputAttachments,
+} from "@/components/chat/prompt-input";
+import { Reasoning } from "@/components/chat/reasoning";
+import { useChatContext } from "./chat-provider";
+import { useThinkingPanel } from "./thinking-panel-provider";
+import { useChatPatternWithProject } from "@/lib/chat-pattern";
+import { useProjectTheme } from "@/hooks/useProjectTheme";
+import { applyTheme, getStoredThemeId } from "@/hooks/useTheme";
+
+type PromptMenuProps = {
+  selectedModel: string;
+  onSelectModel: (modelId: string) => void;
+  thinkingEnabled: boolean;
+  onToggleThinking: () => void;
+};
+
+const PromptMenu = ({ selectedModel, onSelectModel, thinkingEnabled, onToggleThinking }: PromptMenuProps) => {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <PromptInputButton>
+          <MenuSquareIcon className="size-4" strokeWidth={2} />
+        </PromptInputButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="overflow-hidden">
+        <DropdownMenuItem onClick={() => attachments.openFileDialog()}>
+          <ImageIcon className="size-4" />
+          Add photos & files
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={onToggleThinking}>
+          <BrainIcon className="size-4" />
+          <span>Thinking</span>
+          <Switch
+            checked={thinkingEnabled}
+            onCheckedChange={onToggleThinking}
+            onClick={(e) => e.stopPropagation()}
+            className="ml-auto"
+          />
+        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <CpuIcon className="size-4" />
+            Select model
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {MODELS.map((model) => (
+              <DropdownMenuItem
+                key={model.id}
+                onClick={() => onSelectModel(model.id)}
+              >
+                {selectedModel === model.id && <CheckIcon className="size-4" />}
+                <span className={selectedModel !== model.id ? "pl-6" : ""}>
+                  {model.name}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
+// Cache helpers for conversation -> projectId mapping
+// This enables synchronous theme application on navigation
+const CONV_PROJECT_CACHE_KEY = (convId: string) => `conv_project_${convId}`;
+
+function getCachedProjectId(conversationId: string | null): string | null {
+  if (!conversationId || typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(CONV_PROJECT_CACHE_KEY(conversationId));
+  } catch {
+    return null;
+  }
+}
+
+function setCachedProjectId(conversationId: string, projectId: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = CONV_PROJECT_CACHE_KEY(conversationId);
+    if (projectId) {
+      localStorage.setItem(key, projectId);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+// Strip SDK tool-execution output from displayed text
+function stripToolOutput(text: string): string {
+  // Remove "Executing tool: ..." blocks through their numbered result lines
+  return text
+    .replace(/Executing tool:[\s\S]*\[\d+\]\s*\([^)]*\)[^\n]*/g, "")
+    .replace(/Executing tool:[^\n]*/g, "")
+    .trim();
+}
+
+// --- Destination showcase data ---
+const featuredDestinations = [
+  { id: "kyoto", name: "Kyoto", image: "/images/destination-kyoto-spring.png", subtitle: "Cherry Blossom Season", temp: 22, condition: "Partly Cloudy", wind: 8 },
+  { id: "swiss", name: "Swiss Alps", image: "/images/destination-swiss-alps.png", subtitle: "Winter Paradise", temp: -2, condition: "Snow", wind: 20 },
+  { id: "maldives", name: "Maldives", image: "/images/maldives.png", subtitle: "Overwater Luxury", temp: 30, condition: "Tropical", wind: 15 },
+  { id: "santorini", name: "Santorini", image: "/images/santorini.png", subtitle: "Aegean Dreams", temp: 28, condition: "Sunny", wind: 12 },
+];
+
+const suggestions = [
+  "Plan a romantic getaway to Santorini",
+  "Find luxury resorts in the Maldives",
+  "Recommend a cultural trip to Japan",
+  "Suggest adventure travel in New Zealand",
+];
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+const ChatBotDemo = () => {
+  const pathname = usePathname();
+  const router = useRouter();
+  const chatState = useChatContext();
+  const { authenticated, user } = usePrivy();
+  const thinkingPanel = useThinkingPanel();
+  const hasRedirectedRef = useRef(false);
+  const database = useDatabase();
+  const walletAddress = user?.wallet?.address;
+
+  // Use SDK's useFiles hook for resolving file placeholders in messages
+  const { resolveFilePlaceholders } = useFiles({
+    database,
+    walletAddress,
+  });
+
+  // Get conversationId early to determine if this is a new chat
+  const { conversationId: currentConversationId } = chatState;
+
+  // Apply theme SYNCHRONOUSLY at start of render to prevent flash
+  // - For new chat (no conversationId): apply global theme
+  // - For existing conversation: check cache for projectId and apply its theme
+  if (typeof window !== "undefined") {
+    if (!currentConversationId) {
+      applyTheme(getStoredThemeId());
+    } else {
+      const cachedProjectId = getCachedProjectId(currentConversationId);
+      if (cachedProjectId) {
+        // Apply project theme synchronously from cache
+        try {
+          const stored = localStorage.getItem(`project_theme_${cachedProjectId}`);
+          const settings = stored ? JSON.parse(stored) : {};
+          if (settings.colorTheme) {
+            applyTheme(settings.colorTheme);
+          } else {
+            applyTheme(getStoredThemeId());
+          }
+        } catch {
+          applyTheme(getStoredThemeId());
+        }
+      }
+      // If no cache, theme will be applied after async fetch (small flash on first visit)
+    }
+  }
+
+  const [selectedModel, setSelectedModel] = useState<string>(MODELS[0].id);
+
+  // Track current conversation's projectId for theme inheritance
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [projectIdDetermined, setProjectIdDetermined] = useState(false);
+
+  // Load saved model preference from localStorage after mount to avoid SSR/hydration mismatch
+  useEffect(() => {
+    const saved = localStorage.getItem("chat_selectedModel");
+    if (saved && MODELS.some((m) => m.id === saved)) {
+      setSelectedModel(saved);
+    }
+  }, []);
+
+  // Load saved thinking preference from localStorage after mount
+  useEffect(() => {
+    const saved = localStorage.getItem("chat_thinkingEnabled");
+    if (saved !== null) {
+      setThinkingEnabled(saved === "true");
+    }
+  }, []);
+
+  const handleSelectModel = useCallback((modelId: string) => {
+    setSelectedModel(modelId);
+    localStorage.setItem("chat_selectedModel", modelId);
+  }, []);
+
+  const handleToggleThinking = useCallback(() => {
+    setThinkingEnabled((prev) => {
+      const newValue = !prev;
+      localStorage.setItem("chat_thinkingEnabled", String(newValue));
+      return newValue;
+    });
+  }, []);
+
+  // Note: File preprocessing (PDF, Excel, Word) is now handled automatically
+  // by the SDK via useChatStorage's fileProcessors option. No need for manual
+  // usePdf() or useOCR() calls here.
+
+  const {
+    messages,
+    input,
+    setInput,
+    handleSubmit,
+    addMessageOptimistically,
+    isLoading,
+    status,
+    error,
+    subscribeToStreaming,
+    subscribeToThinking,
+    conversationId,
+    setConversationId,
+    getConversation,
+    createConversation,
+  } = chatState;
+
+  // Fetch conversation's projectId when conversationId changes
+  useEffect(() => {
+    // Reset determination state when conversation changes
+    setProjectIdDetermined(false);
+
+    if (!conversationId) {
+      setCurrentProjectId(null);
+      setProjectIdDetermined(true);
+      return;
+    }
+
+    const fetchProjectId = async () => {
+      try {
+        const conversation = await getConversation(conversationId);
+        const projectId = conversation?.projectId || null;
+        setCurrentProjectId(projectId);
+        // Cache the projectId for synchronous theme application on future visits
+        setCachedProjectId(conversationId, projectId);
+      } catch {
+        setCurrentProjectId(null);
+      }
+      setProjectIdDetermined(true);
+    };
+
+    fetchProjectId();
+  }, [conversationId, getConversation]);
+
+  // Get project theme settings (returns empty settings if no projectId)
+  const { settings: projectTheme, settingsLoaded, loadedForProjectId } = useProjectTheme(currentProjectId);
+
+  // Apply project color theme to entire app when viewing a conversation in this project
+  // Wait until projectId is determined AND settings are loaded for the correct projectId
+  useEffect(() => {
+    if (!projectIdDetermined || !settingsLoaded) return;
+
+    // Ensure settings are loaded for the current projectId to prevent flash during transitions
+    // When currentProjectId changes, loadedForProjectId will be stale until the effect runs
+    if (currentProjectId !== null && loadedForProjectId !== currentProjectId) return;
+
+    if (projectTheme.colorTheme) {
+      applyTheme(projectTheme.colorTheme);
+    } else {
+      // No project override - apply global theme
+      applyTheme(getStoredThemeId());
+    }
+  }, [projectIdDetermined, settingsLoaded, loadedForProjectId, currentProjectId, projectTheme.colorTheme]);
+
+  // Check if settings are ready (loaded for the correct projectId)
+  const isSettingsReady = projectIdDetermined && settingsLoaded &&
+    (currentProjectId === null || loadedForProjectId === currentProjectId);
+
+  // Use project-aware pattern hook with optional project overrides
+  const computedPatternStyle = useChatPatternWithProject(
+    projectTheme.colorTheme,
+    projectTheme.iconTheme
+  );
+
+  // Keep the last valid pattern during transitions to prevent flickering
+  // This is especially important when switching between chats in the same project
+  const lastValidPatternRef = useRef<React.CSSProperties | null>(null);
+  if (isSettingsReady) {
+    lastValidPatternRef.current = computedPatternStyle;
+  }
+  // Use the cached pattern if available, otherwise fall back to computed pattern
+  // This ensures we always show a pattern (computed is always valid, just might be global during transitions)
+  const patternStyle = lastValidPatternRef.current ?? computedPatternStyle;
+
+  const [streamingThinking, setStreamingThinking] = useState<string>("");
+  const [streamingText, setStreamingText] = useState<string>("");
+  const [thinkingDuration, setThinkingDuration] = useState<number | undefined>(
+    undefined
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const [activeDestination, setActiveDestination] = useState(0);
+  const [panelWeather, setPanelWeather] = useState<Record<string, LiveWeather>>({});
+  const thinkingStartTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToThinking((text: string) => {
+      setStreamingThinking(text);
+      // Start timing when thinking begins
+      if (text && thinkingStartTimeRef.current === null) {
+        thinkingStartTimeRef.current = Date.now();
+      }
+    });
+    return unsubscribe;
+  }, [subscribeToThinking]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToStreaming((text: string) => {
+      setStreamingText(stripToolOutput(text));
+      // When streaming text starts and we were thinking, calculate duration
+      if (text && thinkingStartTimeRef.current !== null) {
+        const duration = Math.ceil(
+          (Date.now() - thinkingStartTimeRef.current) / 1000
+        );
+        setThinkingDuration(duration);
+        thinkingStartTimeRef.current = null;
+      }
+    });
+    return unsubscribe;
+  }, [subscribeToStreaming]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setStreamingThinking("");
+      setStreamingText("");
+      setThinkingDuration(undefined);
+      thinkingStartTimeRef.current = null;
+    } else {
+      // Reset submitting state when loading completes
+      setIsSubmitting(false);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (
+      conversationId &&
+      pathname === "/" &&
+      messages.length > 0 &&
+      !hasRedirectedRef.current
+    ) {
+      hasRedirectedRef.current = true;
+      router.replace(`/c/${conversationId}`);
+    }
+  }, [conversationId, pathname, messages.length, router]);
+
+  useEffect(() => {
+    if (pathname === "/") {
+      hasRedirectedRef.current = false;
+    }
+  }, [pathname]);
+
+  // Auto-rotate featured destinations every 8 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveDestination((prev) => (prev + 1) % featuredDestinations.length);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch live weather for all featured destinations
+  useEffect(() => {
+    const ids = featuredDestinations.map((d) => d.id);
+    Promise.all(
+      ids.map(async (id) => {
+        const w = await fetchLiveWeather(id);
+        if (w) setPanelWeather((prev) => ({ ...prev, [id]: w }));
+      })
+    );
+  }, []);
+
+  const onSubmit = useCallback(
+    async (message: PromptInputMessage) => {
+      // Show loading indicator immediately
+      setIsSubmitting(true);
+
+      // For new conversations from home page, create conversation and navigate FIRST
+      // This pattern ensures the user sees the conversation page immediately
+      let targetConversationId = conversationId;
+      if (pathname === "/" && !conversationId) {
+        const conv = await createConversation({ createImmediately: true });
+        if (conv?.conversationId) {
+          targetConversationId = conv.conversationId;
+          // Navigate IMMEDIATELY - don't wait for message to complete
+          router.replace(`/c/${conv.conversationId}`);
+        }
+      }
+
+      // Step 1: Add user message optimistically
+      addMessageOptimistically(message.text, message.files, message.text);
+      setInput(""); // Clear input immediately for instant feedback
+
+      // Step 2: File preprocessing is now handled automatically by useChatStorage
+      // The SDK will extract text from PDF, Excel, and Word files automatically
+      // No need for manual processing here
+
+      // Step 3: Send to API (skip adding user message to UI again since we already did)
+      // Get the resolved model config based on thinking toggle
+      const modelConfig = getModelConfig(selectedModel, thinkingEnabled);
+      await handleSubmit(
+        {
+          ...message,
+          text: message.text,
+          displayText: message.text,
+          files: message.files,
+        },
+        {
+          model: modelConfig?.modelId ?? selectedModel,
+          apiType: modelConfig?.apiType,
+          maxOutputTokens: 32000,
+          toolChoice: "auto",
+          // Only include reasoning params for models that use API-level reasoning (Claude, GPT)
+          ...(thinkingEnabled && modelConfig?.useReasoning && {
+            reasoning: { effort: "high", summary: "detailed" },
+            thinking: { type: "enabled", budget_tokens: 10000 },
+          }),
+          skipOptimisticUpdate: true,
+          // Pass the conversation ID explicitly so memory tool can exclude it
+          conversationId: targetConversationId ?? undefined,
+        }
+      );
+    },
+    [handleSubmit, addMessageOptimistically, setInput, selectedModel, thinkingEnabled, pathname, router, conversationId, createConversation]
+  );
+
+  const currentDest = featuredDestinations[activeDestination];
+
+  return (
+    <div className="relative flex min-h-0 min-w-0 flex-1 bg-background">
+      {/* Left Panel - Immersive Destination Showcase */}
+      <motion.aside
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="hidden lg:block w-[45%] relative overflow-hidden flex-shrink-0"
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentDest.id}
+            initial={{ opacity: 0, scale: 1.1 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 1.2 }}
+            className="absolute inset-0"
+          >
+            <img
+              src={currentDest.image}
+              alt={currentDest.name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
+          </motion.div>
+        </AnimatePresence>
+
+        <div className="absolute inset-0 flex flex-col justify-between p-8 pointer-events-none">
+          <div className="flex items-center justify-end pointer-events-auto">
+            <a href="/landing" className="font-serif text-2xl font-bold text-white tracking-wide hover:opacity-80 transition-opacity cursor-pointer">
+              Voyage<span className="text-gold">.</span>
+            </a>
+          </div>
+
+          <div className="space-y-6">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentDest.id + "-info"}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.6 }}
+              >
+                <p className="text-gold text-sm tracking-[0.2em] uppercase mb-2">
+                  {currentDest.subtitle}
+                </p>
+                <h2 className="font-serif text-5xl text-white font-light">
+                  {currentDest.name}
+                </h2>
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="flex items-center gap-6 text-white/80">
+              <div className="flex items-center gap-2">
+                <Sun className="h-4 w-4 text-gold" />
+                <span className="text-sm">
+                  {panelWeather[currentDest.id]?.temperature ?? currentDest.temp}°F
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Cloud className="h-4 w-4" />
+                <span className="text-sm">
+                  {panelWeather[currentDest.id]?.condition ?? currentDest.condition}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Wind className="h-4 w-4" />
+                <span className="text-sm">
+                  {panelWeather[currentDest.id]?.windSpeed ?? currentDest.wind} km/h
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pointer-events-auto">
+              {featuredDestinations.map((dest, index) => (
+                <button
+                  key={dest.id}
+                  onClick={() => setActiveDestination(index)}
+                  className={`h-1 rounded-full transition-all duration-500 ${
+                    index === activeDestination
+                      ? "w-8 bg-gold"
+                      : "w-2 bg-white/30 hover:bg-white/50"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </motion.aside>
+
+      {/* Right Panel - Chat Interface */}
+      <main className="flex-1 flex flex-col min-w-0 relative" style={patternStyle}>
+        <div className={`min-h-0 flex-1 overflow-y-auto ${messages.length === 0 ? "flex items-center justify-center" : "px-4"}`}>
+          {messages.length > 0 ? (
+          <div className="mx-auto max-w-3xl pb-52 flex flex-col gap-8 p-4 w-full">
+          {messages.map((message: any) => (
+            <div key={message.id}>
+              {message.parts.map((part: any, i: number) => {
+                switch (part.type) {
+                  case "text": {
+                    const isLastAssistantMessage =
+                      message.role === "assistant" &&
+                      message.id === messages.at(-1)?.id;
+
+                    // Always use StreamingMessage for the last assistant message to avoid
+                    // flash when switching components after streaming completes
+                    const useStreaming = isLastAssistantMessage;
+
+                    // Show reasoning after streaming starts (or completes) if there was thinking
+                    // Only for assistant messages
+                    const showReasoning =
+                      message.role === "assistant" &&
+                      isLastAssistantMessage &&
+                      streamingThinking &&
+                      (streamingText || !isLoading);
+
+                    // Show loading indicator inside message when waiting for response
+                    // Keep showing until streaming text actually starts
+                    // Only for assistant messages
+                    const showInlineLoader =
+                      message.role === "assistant" &&
+                      isLastAssistantMessage &&
+                      (isSubmitting || isLoading) &&
+                      !streamingText &&
+                      !error;
+
+                    // Show error when there's an error or empty response
+                    // Only for the last assistant message when not loading
+                    // Don't show error for optimistic empty messages (no content at all means waiting for response)
+                    const hasAnyContent = message.parts?.some((p: any) =>
+                      p.text || p.image_url || p.url || p.filename
+                    );
+                    const showError =
+                      message.role === "assistant" &&
+                      isLastAssistantMessage &&
+                      !isLoading &&
+                      !isSubmitting &&
+                      (error || (hasAnyContent && !part.text && !streamingText));
+
+                    // For user messages, just render the message
+                    if (message.role === "user") {
+                      return (
+                        <Message key={`${message.id}-${i}`} from={message.role}>
+                          <MessageContent>
+                            <MessageResponse resolveFilePlaceholders={resolveFilePlaceholders}>
+                              {part.text}
+                            </MessageResponse>
+                          </MessageContent>
+                        </Message>
+                      );
+                    }
+
+                    // For assistant messages, include loader and reasoning
+                    return (
+                      <div key={`${message.id}-${i}`}>
+                        {/* Loading indicator: circle, or circle + "Thinking..." */}
+                        {showInlineLoader && (
+                          <div className="flex items-center gap-2 text-muted-foreground text-sm h-5">
+                            <span className="inline-block size-3 rounded-full bg-gold flex-shrink-0 animate-[scale-pulse_1.5s_ease-in-out_infinite]" />
+                            {streamingThinking && <span>Thinking...</span>}
+                          </div>
+                        )}
+                        {/* Error message when streaming fails or response is empty */}
+                        {showError && (
+                          <Message from={message.role}>
+                            <MessageContent>
+                              <div className="flex items-center gap-2 text-destructive">
+                                <AlertCircleIcon className="size-4 flex-shrink-0" />
+                                <span>{error || "Something went wrong. Please try again."}</span>
+                              </div>
+                            </MessageContent>
+                          </Message>
+                        )}
+                        {/* After streaming starts: show brain + "Thought for X seconds" if there was thinking */}
+                        {showReasoning && (
+                          <Reasoning
+                            className="w-full mb-2"
+                            isStreaming={false}
+                            duration={thinkingDuration}
+                            content={streamingThinking}
+                            onOpen={thinkingPanel.openPanel}
+                          />
+                        )}
+                        {/* Only show message content when we have text or streaming */}
+                        {(part.text || streamingText) && (
+                          <Message from={message.role}>
+                            <MessageContent>
+                              {useStreaming ? (
+                                <StreamingMessage
+                                  subscribe={subscribeToStreaming}
+                                  initialText={stripToolOutput(part.text || "")}
+                                  isLoading={false}
+                                  resolveFilePlaceholders={resolveFilePlaceholders}
+                                />
+                              ) : (
+                                <MessageResponse resolveFilePlaceholders={resolveFilePlaceholders}>
+                                  {stripToolOutput(part.text)}
+                                </MessageResponse>
+                              )}
+                            </MessageContent>
+                          </Message>
+                        )}
+                        {/* Inline destination cards — only for newly-introduced destinations */}
+                        {(() => {
+                          const textToScan = part.text || (isLastAssistantMessage ? streamingText : "");
+                          if (!textToScan || isLoading) return null;
+                          const allDetected = detectDestinations(textToScan);
+                          if (allDetected.length === 0) return null;
+
+                          // Build set of destinations already shown in PREVIOUS messages
+                          const previouslyShown = new Set<string>();
+                          for (const prevMsg of messages) {
+                            if (prevMsg.id === message.id) break;
+                            if (prevMsg.role !== "assistant") continue;
+                            for (const prevPart of (prevMsg as any).parts ?? []) {
+                              if (prevPart.type === "text" && prevPart.text) {
+                                detectDestinations(prevPart.text).forEach((d: any) =>
+                                  previouslyShown.add(d.id)
+                                );
+                              }
+                            }
+                          }
+
+                          const newDestinations = allDetected.filter(
+                            (d) => !previouslyShown.has(d.id)
+                          );
+                          if (newDestinations.length === 0) return null;
+
+                          return (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.4, delay: 0.3 }}
+                              className="mt-3 grid grid-cols-1 gap-3 max-w-sm"
+                            >
+                              {newDestinations.map((dest, idx) => (
+                                <InlineDestinationCard
+                                  key={dest.id}
+                                  destination={dest}
+                                  index={idx}
+                                />
+                              ))}
+                            </motion.div>
+                          );
+                        })()}
+                        {/* Quick action chips — contextual follow-ups */}
+                        {!isLoading && (part.text || streamingText) && (
+                          <QuickActionChips
+                            messageContent={part.text || streamingText}
+                            onAction={(prompt) =>
+                              onSubmit({ text: prompt, files: [] } as PromptInputMessage)
+                            }
+                            isLatestMessage={isLastAssistantMessage}
+                          />
+                        )}
+                      </div>
+                    );
+                  }
+                  case "file": {
+                    const ext = part.filename?.split(".").pop()?.toLowerCase();
+                    const isSpreadsheet = ext === "xlsx" || ext === "xls" || ext === "csv";
+                    const isDocument = ext === "docx" || ext === "doc" || ext === "pdf" || ext === "txt";
+                    const isArchive = ext === "zip";
+                    const FileTypeIcon = isSpreadsheet ? FileSpreadsheetIcon : isDocument ? FileTextIcon : FileIcon;
+                    const fileTypeLabel = isArchive ? "Archive" : isSpreadsheet ? "Spreadsheet" : isDocument ? "Document" : "File";
+                    const iconBgColor = isArchive ? "bg-amber-500" : isSpreadsheet ? "bg-green-500" : "bg-blue-500";
+
+                    // User files: no bubble
+                    if (message.role === "user") {
+                      return (
+                        <div
+                          key={`${message.id}-${i}`}
+                          className="flex items-center gap-3 rounded-xl bg-muted/50 border border-border p-2 pr-4 text-sm ml-auto w-fit mt-2"
+                        >
+                          <div className={`flex size-10 items-center justify-center rounded-lg ${iconBgColor}`}>
+                            {isArchive ? (
+                              <HugeiconsIcon icon={Zip02Icon} className="size-5 text-white" />
+                            ) : (
+                              <FileTypeIcon className="size-5 text-white" />
+                            )}
+                          </div>
+                          <div className="flex flex-col overflow-hidden">
+                            <span className="truncate font-medium">
+                              {part.filename}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {fileTypeLabel}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    // Assistant files: with bubble
+                    return (
+                      <Message key={`${message.id}-${i}`} from={message.role}>
+                        <MessageContent>
+                          <div className="flex items-center gap-3 rounded-xl bg-muted/50 border border-border p-2 pr-4 text-sm">
+                            <div className={`flex size-10 items-center justify-center rounded-lg ${iconBgColor}`}>
+                              {isArchive ? (
+                                <HugeiconsIcon icon={Zip02Icon} className="size-5 text-white" />
+                              ) : (
+                                <FileTypeIcon className="size-5 text-white" />
+                              )}
+                            </div>
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="truncate font-medium">
+                                {part.filename}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {fileTypeLabel}
+                              </span>
+                            </div>
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    );
+                  }
+                  case "image_url":
+                    // User images: no bubble
+                    if (message.role === "user") {
+                      return (
+                        <img
+                          key={`${message.id}-${i}`}
+                          src={part.image_url?.url}
+                          alt="Uploaded image"
+                          className="max-h-60 max-w-[300px] rounded-lg object-contain ml-auto mt-2"
+                        />
+                      );
+                    }
+                    // Assistant images: with bubble
+                    return (
+                      <Message key={`${message.id}-${i}`} from={message.role}>
+                        <MessageContent>
+                          <img
+                            src={part.image_url?.url}
+                            alt="Uploaded image"
+                            className="max-h-60 max-w-[300px] rounded-lg object-contain"
+                          />
+                        </MessageContent>
+                      </Message>
+                    );
+                  case "reasoning":
+                    // Only show reasoning for assistant messages
+                    if (message.role !== "assistant") return null;
+                    return (
+                      <Reasoning
+                        key={`${message.id}-${i}`}
+                        className="w-full"
+                        isStreaming={false}
+                        content={part.text}
+                        onOpen={thinkingPanel.openPanel}
+                      />
+                    );
+                  case "image":
+                    return (
+                      <Message key={`${message.id}-${i}`} from={message.role}>
+                        <MessageContent>
+                          <img
+                            src={part.url}
+                            alt="Generated image"
+                            className="rounded-lg max-w-full"
+                          />
+                        </MessageContent>
+                      </Message>
+                    );
+                  default:
+                    return null;
+                }
+              })}
+            </div>
+          ))}
+          {/* Standalone loading indicator when submitting but before assistant message appears */}
+          {isSubmitting && !isLoading && messages.at(-1)?.role === "user" && (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm h-5 mt-4">
+              <span className="inline-block size-3 rounded-full bg-gold flex-shrink-0 animate-[scale-pulse_1.5s_ease-in-out_infinite]" />
+            </div>
+          )}
+        </div>
+          ) : (
+            /* Welcome State */
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-16 px-4 w-full max-w-lg mx-auto"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                <p className="text-gold text-sm tracking-[0.3em] uppercase mb-4">
+                  {getGreeting()}
+                </p>
+                <h1 className="font-serif text-4xl md:text-5xl text-foreground font-light mb-4">
+                  How may I assist
+                  <span className="block italic text-gold">you today?</span>
+                </h1>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  I&apos;m your personal travel concierge. Tell me your dream destination
+                  or describe the experience you&apos;re seeking.
+                </p>
+              </motion.div>
+
+              {/* Mood / Vibe Selector */}
+              <MoodSelector
+                onSelect={(prompt) =>
+                  onSubmit({ text: prompt, files: [] } as PromptInputMessage)
+                }
+              />
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
+                className="mt-8"
+              >
+                <p className="text-muted-foreground text-sm text-center mb-4">
+                  Or try a specific request
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.9 }}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+              >
+                {suggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    onClick={() =>
+                      onSubmit({ text: suggestion, files: [] } as PromptInputMessage)
+                    }
+                    className="p-4 text-left text-sm bg-card/50 border border-border/30 rounded-lg hover:border-gold/30 hover:bg-card transition-all group"
+                  >
+                    <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                      {suggestion}
+                    </span>
+                  </button>
+                ))}
+              </motion.div>
+            </motion.div>
+          )}
+        </div>
+
+        {/* Input area */}
+        <div className="min-w-0 px-6 sm:px-10 pb-4 pt-2 border-t border-border/30 bg-background/80 backdrop-blur-xl">
+          <div className="mx-auto w-full min-w-0 max-w-3xl overflow-hidden">
+            <PromptInput
+              accept="image/*,application/pdf,.xlsx,.xls,.docx,.zip,application/zip"
+              globalDrop
+              multiple
+              onSubmit={onSubmit}
+            >
+              <div
+                data-align="block-end"
+                className="order-first w-full min-w-0 max-w-full overflow-hidden"
+              >
+                <PromptInputAttachments>
+                  {(attachment) => (
+                    <PromptInputAttachment
+                      key={attachment.id}
+                      data={attachment}
+                    />
+                  )}
+                </PromptInputAttachments>
+              </div>
+              <div className="flex w-full min-w-0 items-center gap-1 px-3 py-2">
+                <PromptMenu
+                  selectedModel={selectedModel}
+                  onSelectModel={handleSelectModel}
+                  thinkingEnabled={thinkingEnabled}
+                  onToggleThinking={handleToggleThinking}
+                />
+                <PromptInputTextarea
+                  disabled={!authenticated}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={
+                    authenticated
+                      ? "Where shall we travel next?"
+                      : CHAT_INPUT_PLACEHOLDER_UNAUTHENTICATED
+                  }
+                  value={input}
+                  className="flex-1 px-2"
+                />
+                <PromptInputSubmit
+                  disabled={
+                    !input ||
+                    isLoading ||
+                    !authenticated
+                  }
+                  status={status}
+                />
+              </div>
+            </PromptInput>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default ChatBotDemo;
